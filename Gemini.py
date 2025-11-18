@@ -96,6 +96,8 @@ def text_input(thread_event):
     while not thread_event.is_set():
         query = input("Enter your query or type 'exit' to quit: \nUser:")
         if query.lower() == 'exit':
+            response = text_completion(f"{query}, tell the user that you are shutting down and at their dispossal anytime they need!")
+            print(f"J.A.R.V.I.S.: {response}")
             thread_event.set()
             break
         elif keyword in query.lower():
