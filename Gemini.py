@@ -1,0 +1,128 @@
+# Libraries Imported
+
+import os
+from dotenv import load_dotenv
+import cv2
+import google.generativeai as genai
+from langchain_classic.memory import ConversationBufferMemory
+from langchain_classic.chains import ConversationChain
+import threading
+from PIL import Image
+
+# Set up Gemini API
+
+load_dotenv()
+api_key = os.getenv("API_KEY")
+
+genai.configure(api_key=api_key)
+model = genai.GenerativeModel("gemini-2.0-flash-exp")
+
+# Initialize conversation memory
+memory = ConversationBufferMemory()
+
+# Add a primary history to the memory
+primary_history = """
+The bot is a helpful assistant named JARVIS short for Just A Rather Very Intelligent System. It can assist with various queries, provide guidance, and respond politely.
+"""
+memory.save_context({"input": ""}, {"output": primary_history})
+
+# Function to perform text completion
+
+def text_completion(prompt):
+    # Update conversation memory
+    conversation_history = memory.buffer
+    conversation_history = conversation_history.replace("AI:", "")
+
+    # Generate new response based on updated prompt
+    response = model.generate_content(f"{conversation_history} {prompt}")
+    
+    # Extract the text from each chunk if `response` is iterable
+    response_text = ''.join([chunk.text for chunk in response])
+    # Store new conversation context in memory
+    memory.save_context({"input": prompt}, {"output": response_text})
+        
+    return response_text
+
+# Function to describe video feed
+
+def describe_video_feed(query, frame):
+    # Retrieve the most recent conversation from memory buffer
+    conversation_history = memory.buffer
+    conversation_history = conversation_history.replace("AI:", "")
+    
+    # Save and open the frame as an image
+    cv2.imwrite("D:\\Programming\\Projects\\Desktop Applications\\Generative-AI-API-Implementation\\img.jpg", frame)
+    img = Image.open("D:\\Programming\\Projects\\Desktop Applications\\Generative-AI-API-Implementation\\img.jpg")
+    
+    try:
+        # Send the query and frame to the model for analysis
+        response = model.generate_content([f"{conversation_history} {query}", img])
+        # Save each chunk of response and context
+        response_text = ''.join([chunk.text for chunk in response])
+        memory.save_context({"input": query}, {"output": response_text})
+        return response_text
+    except Exception as e:
+        return f"Failed to describe image: {e}"
+
+# Function to handle video feed
+
+def video_feed(video_event):
+    global frame
+    cap = cv2.VideoCapture(0)  # Start video capture from webcam
+
+    while not video_event.is_set():
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        cv2.imshow("Cam", frame)
+
+        # Press 'q' to exit the live feed
+        
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            video_event.set()
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+# Function to handle text input and process user queries
+
+def text_input(video_event):
+    keyword = "video feed"
+
+    while not video_event.is_set():
+        query = input("Enter your query or type 'exit' to quit: ")
+        if query.lower() == 'exit':
+            video_event.set()
+            break
+        elif keyword in query.lower():
+            query = query.replace("video feed", "").strip()
+            description = describe_video_feed(query, frame)
+            print(f"Description: {description}")
+            os.remove("D:\\Programming\\Projects\\Desktop Applications\\Generative-AI-API-Implementation\\img.jpg")
+        else:
+            response = text_completion(query)
+            print(f"Response: {response}")
+
+# Main Function
+
+if __name__ == "__main__":
+    # Event to signal threads to stop
+    
+    video_event = threading.Event()
+
+    # Create threads for video feed and text input
+    
+    video_thread = threading.Thread(target=video_feed, args=(video_event,))
+    text_thread = threading.Thread(target=text_input, args=(video_event,))
+
+    # Start the threads
+    
+    video_thread.start()
+    text_thread.start()
+
+    # Ensure both threads finish before exiting
+    
+    video_thread.join()
+    text_thread.join()
