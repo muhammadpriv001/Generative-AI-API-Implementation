@@ -68,11 +68,11 @@ def describe_video_feed(query, frame):
 
 # Function to handle video feed
 
-def video_feed(video_event):
+def video_feed(thread_event):
     global frame
     cap = cv2.VideoCapture(0)  # Start video capture from webcam
 
-    while not video_event.is_set():
+    while not thread_event.is_set():
         ret, frame = cap.read()
         if not ret:
             break
@@ -82,7 +82,7 @@ def video_feed(video_event):
         # Press 'q' to exit the live feed
         
         if cv2.waitKey(1) & 0xFF == ord('q'):
-            video_event.set()
+            thread_event.set()
             break
 
     cap.release()
@@ -90,34 +90,34 @@ def video_feed(video_event):
 
 # Function to handle text input and process user queries
 
-def text_input(video_event):
+def text_input(thread_event):
     keyword = "video feed"
 
-    while not video_event.is_set():
-        query = input("Enter your query or type 'exit' to quit: ")
+    while not thread_event.is_set():
+        query = input("Enter your query or type 'exit' to quit: \nUser:")
         if query.lower() == 'exit':
-            video_event.set()
+            thread_event.set()
             break
         elif keyword in query.lower():
             query = query.replace("video feed", "").strip()
             description = describe_video_feed(query, frame)
-            print(f"Description: {description}")
+            print(f"J.A.R.V.I.S.: {description}")
             os.remove("D:\\Programming\\Projects\\Desktop Applications\\Generative-AI-API-Implementation\\img.jpg")
         else:
             response = text_completion(query)
-            print(f"Response: {response}")
+            print(f"J.A.R.V.I.S.: {response}")
 
 # Main Function
 
 if __name__ == "__main__":
     # Event to signal threads to stop
     
-    video_event = threading.Event()
+    thread_event = threading.Event()
 
     # Create threads for video feed and text input
     
-    video_thread = threading.Thread(target=video_feed, args=(video_event,))
-    text_thread = threading.Thread(target=text_input, args=(video_event,))
+    video_thread = threading.Thread(target=video_feed, args=(thread_event,))
+    text_thread = threading.Thread(target=text_input, args=(thread_event,))
 
     # Start the threads
     
