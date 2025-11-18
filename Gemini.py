@@ -3,7 +3,8 @@
 import os
 from dotenv import load_dotenv
 import cv2
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from langchain_classic.memory import ConversationBufferMemory
 from langchain_classic.chains import ConversationChain
 import threading
@@ -14,8 +15,7 @@ from PIL import Image
 load_dotenv()
 api_key = os.getenv("API_KEY")
 
-genai.configure(api_key=api_key)
-model = genai.GenerativeModel("gemini-2.0-flash-exp")
+client = genai.Client(api_key=api_key)
 
 # Initialize conversation memory
 memory = ConversationBufferMemory()
@@ -34,14 +34,14 @@ def text_completion(prompt):
     conversation_history = conversation_history.replace("AI:", "")
 
     # Generate new response based on updated prompt
-    response = model.generate_content(f"{conversation_history} {prompt}")
+    response = client.models.generate_content(
+        model="gemini-2.5-pro", contents=f"{conversation_history} {prompt}"
+    )
     
-    # Extract the text from each chunk if `response` is iterable
-    response_text = ''.join([chunk.text for chunk in response])
     # Store new conversation context in memory
-    memory.save_context({"input": prompt}, {"output": response_text})
+    memory.save_context({"input": prompt}, {"output": response.text})
         
-    return response_text
+    return response.text
 
 # Function to describe video feed
 
@@ -52,15 +52,17 @@ def describe_video_feed(query, frame):
     
     # Save and open the frame as an image
     cv2.imwrite("D:\\Programming\\Projects\\Desktop Applications\\Generative-AI-API-Implementation\\img.jpg", frame)
-    img = Image.open("D:\\Programming\\Projects\\Desktop Applications\\Generative-AI-API-Implementation\\img.jpg")
+    img = client.files.upload(file="D:\\Programming\\Projects\\Desktop Applications\\Generative-AI-API-Implementation\\img.jpg")
     
     try:
         # Send the query and frame to the model for analysis
-        response = model.generate_content([f"{conversation_history} {query}", img])
-        # Save each chunk of response and context
-        response_text = ''.join([chunk.text for chunk in response])
-        memory.save_context({"input": query}, {"output": response_text})
-        return response_text
+        response = client.models.generate_content(
+            model='gemini-2.5-pro',
+            contents=[img, f"{conversation_history} {query}"]
+        )
+        # Save each response and context
+        memory.save_context({"input": query}, {"output": response.text})
+        return response.text
     except Exception as e:
         return f"Failed to describe image: {e}"
 
