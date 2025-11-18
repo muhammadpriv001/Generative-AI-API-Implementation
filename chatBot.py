@@ -101,7 +101,7 @@ def battery_monitor():
         if percent <= 3 and not plugged and not low_battery_alerted:
             # Low battery detected, prompt AI
             farewell = text_completion(
-                "Laptop battery is critically low (<3%). Say goodbye to the user and see them off politely."
+                "Laptop battery is critically low (<3%). Say goodbye to the user and tell them that it is time that you should sleep."
             )
             print(f"J.A.R.V.I.S.: {farewell}")
             low_battery_alerted = True
