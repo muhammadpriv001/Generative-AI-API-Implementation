@@ -165,7 +165,7 @@ def should_use_camera(user_query):
             print(f"Gemini API busy, retrying ({attempt+1}/{max_retries})...")
             time.sleep(5)  # wait 5 seconds before retry
     else:
-        return f"{bot_name}: Sorry, Gemini API is busy. Please try again later."
+        return "use_camera" in "no_camera"
     
     return "use_camera" in decision.text
 
@@ -250,8 +250,7 @@ def describe_video_feed(query, frame):
         return f"{bot_name}: Sorry, Gemini API is busy. Please try again later."
     
 
-    if os.path.exists(temp_path):
-        os.remove(temp_path)
+    os.remove(temp_path)
     
     # Store prompt + response
     memory_manager.add_memory(query)
