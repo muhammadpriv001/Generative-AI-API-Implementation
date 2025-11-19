@@ -137,11 +137,45 @@ def battery_monitor():
         time.sleep(60)
 
 # -----------------------------
+# Camera decision layer (LLM decides)
+# -----------------------------
+def should_use_camera(user_query):
+    prompt = f"""
+        Decide whether the assistant should use the camera to better answer this request.
+        Return ONLY one token: "use_camera" or "no_camera".
+
+        User request:
+        \"\"\"{user_query}\"\"\"
+
+        Return "use_camera" when the user's request likely requires visual input (object identification, environment, gestures, facial expressions, anything shown physically).
+        Return "no_camera" when the request can be answered from memory, knowledge, or text alone.
+        """
+    
+    # Call Gemini LLM
+    bot_name = get_bot_identity()
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            decision = client.models.generate_content(
+                model="gemini-2.5-pro",
+                contents=prompt
+            )
+            break  # success
+        except Exception as e:
+            print(f"Gemini API busy, retrying ({attempt+1}/{max_retries})...")
+            time.sleep(5)  # wait 5 seconds before retry
+    else:
+        return f"{bot_name}: Sorry, Gemini API is busy. Please try again later."
+    return "use_camera" in decision.text
+
+# -----------------------------
 # Text Completion Function
 # -----------------------------
 def text_completion(prompt):
     """Generate LLM response with SQL + FAISS context."""
     # Safe FAISS retrieval
+    user_name = get_user_identity()
+
     context_list = []
     if memory_manager.faiss.vectors:
         dists, idxs = memory_manager.faiss.search(prompt, k=5)
@@ -151,11 +185,10 @@ def text_completion(prompt):
     context = ' | '.join(context_list)
     sql_context = ' | '.join(memory_manager.sql.fetch_all_memories())
 
-    full_context = f"User Facts: {sql_context}\nRelevant Memories: {context}\nUser: {prompt}"
+    full_context = f"User Facts: {sql_context}\nRelevant Memories: {context}\n{user_name}: {prompt}"
 
     # Call Gemini LLM
     max_retries = 3
-    bot_name = get_bot_identity()
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
@@ -167,7 +200,7 @@ def text_completion(prompt):
             print(f"Gemini API busy, retrying ({attempt+1}/{max_retries})...")
             time.sleep(5)  # wait 5 seconds before retry
     else:
-        return f"{bot_name}: Sorry, Gemini API is busy. Please try again later."
+        return "Sorry, Gemini API is busy. Please try again later."
 
     # Store prompt + response
     memory_manager.add_memory(prompt)
@@ -178,25 +211,46 @@ def text_completion(prompt):
 # Video Feed Description
 # -----------------------------
 def describe_video_feed(query, frame):
+    """Generate LLM response with SQL + FAISS context."""
+    # Safe FAISS retrieval
+    user_name = get_user_identity()
+    
+    context_list = []
+    if memory_manager.faiss.vectors:
+        dists, idxs = memory_manager.faiss.search(query, k=5)
+        keys = list(memory_manager.faiss.vectors.keys())
+        context_list = [keys[i] for i in idxs if i < len(keys)]
+
+    context = ' | '.join(context_list)
     sql_context = ' | '.join(memory_manager.sql.fetch_all_memories())
+
+    full_context = f"User Facts: {sql_context}\nRelevant Memories: {context}\n{user_name}: {query}"
 
     # Save frame temporarily
     temp_path = "temp_img.jpg"
     cv2.imwrite(temp_path, frame)
     img = client.files.upload(file=temp_path)
-
-    try:
-        response = client.models.generate_content(
-            model='gemini-2.5-pro',
-            contents=[img, f"{sql_context} | {query}"]
-        )
-        memory_manager.add_memory(query)
-        memory_manager.add_memory(response.text)
-        os.remove(temp_path)
-        return response.text
-    except Exception as e:
-        os.remove(temp_path)
-        return f"Failed to describe image: {e}"
+    
+    # Call Gemini LLM
+    max_retries = 3
+    bot_name = get_bot_identity()
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model='gemini-2.5-pro',
+                contents=[img, f"{full_context} | {query}"]
+            )
+            break  # success
+        except Exception as e:
+            print(f"Gemini API busy, retrying ({attempt+1}/{max_retries})...")
+            time.sleep(5)  # wait 5 seconds before retry
+    else:
+        return f"{bot_name}: Sorry, Gemini API is busy. Please try again later."
+    
+    # Store prompt + response
+    memory_manager.add_memory(query)
+    memory_manager.add_memory(response.text)
+    return response.text
 
 # -----------------------------
 # Video Feed Thread
@@ -237,13 +291,14 @@ def text_input(thread_event):
             print(f"{bot_name}: {response}")
             thread_event.set()
             break
-        elif keyword in query.lower():
-            query_clean = query.replace("video feed", "").strip()
-            description = describe_video_feed(query_clean, frame)
-            print(f"{bot_name}: {description}")
         else:
-            response = text_completion(query)
-            print(f"{bot_name}: {response}")
+            use_camera = should_use_camera(query)
+            if use_camera:
+                description = describe_video_feed(query, frame)
+                print(f"{bot_name}: {description}")
+            else:
+                response = text_completion(query)
+                print(f"{bot_name}: {response}")
 
 # -----------------------------
 # Main Function
