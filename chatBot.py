@@ -24,7 +24,18 @@ client = genai.Client(api_key=api_key)
 memory_manager = MemoryManager()
 
 # -----------------------------
-# Identity Handling
+# AI Identity Handling
+# -----------------------------
+def get_bot_identity():
+    """Check SQL memory for stored AI name."""
+    memories = memory_manager.sql.fetch_all_memories()
+    for m in memories:
+        if m.lower().startswith("bot name is"):
+            return m.split("is")[-1].strip()
+    return None
+
+# -----------------------------
+# User Identity Handling
 # -----------------------------
 def get_user_identity():
     """Check SQL memory for stored user name."""
@@ -34,20 +45,32 @@ def get_user_identity():
             return m.split("is")[-1].strip()
     return None
 
+# -----------------------------
+# Initializing Identity
+# -----------------------------
 def initialize_identity():
     """Ask for name only if not already stored."""
     user_name = get_user_identity()
-    if user_name:
-        print(f"Welcome back, {user_name}!\n")
-        return user_name
+    bot_name = get_bot_identity()
+    if user_name and bot_name:
+        print(f"{bot_name}: Welcome back, {user_name}!\n")
+        return user_name, bot_name
 
     # Ask once if missing
     print("Hello! Let's set up your profile.")
+
     user_name = input("Please enter your name: ").strip()
     if user_name:
         memory_manager.add_memory(f"My name is {user_name}")
-        print(f"Profile saved. Hello {user_name}!\n")
-    return user_name
+
+    bot_name = input("Please enter AI-Bot name you want: ").strip()
+    if bot_name:
+        memory_manager.add_memory(f"Bot name is {bot_name}")
+    
+    if user_name and bot_name:
+        print(f"Profile saved. Hello {user_name} from {bot_name}!\n")
+
+    return user_name, bot_name
 
 # -----------------------------
 # Weekly Summary Background Thread
@@ -91,6 +114,7 @@ def battery_monitor():
     If battery < 3% and not charging, triggers AI farewell.
     """
     low_battery_alerted = False
+    bot_name = get_bot_identity()
 
     while True:
         status = check_battery()
@@ -103,7 +127,7 @@ def battery_monitor():
             farewell = text_completion(
                 "Laptop battery is critically low (<3%). Say goodbye to the user and tell them that it is time that you should sleep."
             )
-            print(f"J.A.R.V.I.S.: {farewell}")
+            print(f"{bot_name}: {farewell}")
             low_battery_alerted = True
 
         # Reset flag if battery is okay or charging
@@ -131,6 +155,7 @@ def text_completion(prompt):
 
     # Call Gemini LLM
     max_retries = 3
+    bot_name = get_bot_identity()
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
@@ -142,7 +167,7 @@ def text_completion(prompt):
             print(f"Gemini API busy, retrying ({attempt+1}/{max_retries})...")
             time.sleep(5)  # wait 5 seconds before retry
     else:
-        return "J.A.R.V.I.S.: Sorry, Gemini API is busy. Please try again later."
+        return f"{bot_name}: Sorry, Gemini API is busy. Please try again later."
 
     # Store prompt + response
     memory_manager.add_memory(prompt)
@@ -200,27 +225,25 @@ def text_input(thread_event):
     keyword = "video feed"
 
     while not thread_event.is_set():
-        query = input("Enter your query or type 'exit' to quit:\nUser: ").strip()
+        user_name = get_user_identity()
+        bot_name = get_bot_identity()
+
+        query = input(f"Enter your query or type 'exit' to quit:\n{user_name}: ").strip()
+
         if 'exit' in query.lower():
             response = text_completion(
                 f"{query}, tell the user that you are shutting down and at their disposal anytime they need!"
             )
-            print(f"J.A.R.V.I.S.: {response}")
+            print(f"{bot_name}: {response}")
             thread_event.set()
             break
-        elif "what is my name" in query.lower():
-            user_name = get_user_identity()
-            if user_name:
-                print(f"J.A.R.V.I.S.: Your name is {user_name}")
-            else:
-                print("J.A.R.V.I.S.: I don't know your name yet.")
         elif keyword in query.lower():
             query_clean = query.replace("video feed", "").strip()
             description = describe_video_feed(query_clean, frame)
-            print(f"J.A.R.V.I.S.: {description}")
+            print(f"{bot_name}: {description}")
         else:
             response = text_completion(query)
-            print(f"J.A.R.V.I.S.: {response}")
+            print(f"{bot_name}: {response}")
 
 # -----------------------------
 # Main Function
