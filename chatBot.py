@@ -166,6 +166,7 @@ def should_use_camera(user_query):
             time.sleep(5)  # wait 5 seconds before retry
     else:
         return f"{bot_name}: Sorry, Gemini API is busy. Please try again later."
+    
     return "use_camera" in decision.text
 
 # -----------------------------
@@ -205,6 +206,7 @@ def text_completion(prompt):
     # Store prompt + response
     memory_manager.add_memory(prompt)
     memory_manager.add_memory(response.text)
+    
     return response.text
 
 # -----------------------------
@@ -247,9 +249,14 @@ def describe_video_feed(query, frame):
     else:
         return f"{bot_name}: Sorry, Gemini API is busy. Please try again later."
     
+
+    if os.path.exists(temp_path):
+        os.remove(temp_path)
+    
     # Store prompt + response
     memory_manager.add_memory(query)
     memory_manager.add_memory(response.text)
+    
     return response.text
 
 # -----------------------------
@@ -276,29 +283,27 @@ def video_feed(thread_event):
 # Text Input Thread
 # -----------------------------
 def text_input(thread_event):
-    keyword = "video feed"
+    user_name = get_user_identity()
+    bot_name = get_bot_identity()
 
     while not thread_event.is_set():
-        user_name = get_user_identity()
-        bot_name = get_bot_identity()
-
         query = input(f"Enter your query or type 'exit' to quit:\n{user_name}: ").strip()
+        if not query:
+            continue
 
-        if 'exit' in query.lower():
-            response = text_completion(
-                f"{query}, tell the user that you are shutting down and at their disposal anytime they need!"
-            )
-            print(f"{bot_name}: {response}")
-            thread_event.set()
+        if "exit" in query.lower():
+            resp = text_completion("User is exiting, say goodbye")
+            print(f"{bot_name}: {resp}")
             break
+
+        use_camera = should_use_camera(query)
+
+        if use_camera:
+            response = describe_video_feed(query, frame)
         else:
-            use_camera = should_use_camera(query)
-            if use_camera:
-                description = describe_video_feed(query, frame)
-                print(f"{bot_name}: {description}")
-            else:
-                response = text_completion(query)
-                print(f"{bot_name}: {response}")
+            response = text_completion(query)
+
+        print(f"{bot_name}: {response}")
 
 # -----------------------------
 # Main Function
